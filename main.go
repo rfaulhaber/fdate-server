@@ -6,6 +6,7 @@ import (
 	"github.com/rfaulhaber/fdate"
 	"log"
 	"net/http"
+	"github.com/rfaulhaber/gflag"
 )
 
 type DateResponse struct {
@@ -19,14 +20,24 @@ type DateResponse struct {
 	MonthString string `json:"month_string"`
 }
 
+/*
+ * TODO
+ * - accept dates, convert to FRC
+ * - accept timezone, figure out current day in that timezone
+ */
+
 func main() {
+	port := gflag.String("p", "port", "server port to listen on", "8000")
+
+	gflag.Parse()
+
 	router := mux.NewRouter()
 
 	router.HandleFunc("/today", GetToday).Methods("GET")
 	router.HandleFunc("/date", GetDate)
 	router.HandleFunc("/date/{type}", GetDate)
 
-	log.Fatalln(http.ListenAndServe(":8000", router))
+	log.Fatalln(http.ListenAndServe(":" + *port, router))
 }
 
 func GetToday(w http.ResponseWriter, r *http.Request) {
