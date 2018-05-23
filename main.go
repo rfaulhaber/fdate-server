@@ -4,26 +4,43 @@ import (
 	"encoding/json"
 	"github.com/gorilla/mux"
 	"github.com/rfaulhaber/fdate"
+	"github.com/rfaulhaber/gflag"
 	"log"
 	"net/http"
-	"github.com/rfaulhaber/gflag"
+	"time"
 )
 
 type DateResponse struct {
-	Raw         string `json:"raw"`
-	Day         int    `json:"day"`
-	Month       int    `json:"month"`
-	Year        int    `json:"year"`
-	DayOfYear   int    `json:"day_of_year"`
-	Weekday     string `json:"weekday"`
-	YearString  string `json:"year_string"`
-	MonthString string `json:"month_string"`
+	Raw           string `json:"raw"`
+	Day           int    `json:"day"`
+	Month         int    `json:"month"`
+	Year          int    `json:"year"`
+	DayOfYear     int    `json:"day_of_year"`
+	Weekday       int    `json:"weekday"`
+	WeekdayString string `json:"weekday_string"`
+	YearString    string `json:"year_string"`
+	MonthString   string `json:"month_string"`
 }
+
+func NewDateResponse(date fdate.Date) DateResponse {
+	year, month, day := date.Date()
+
+	return DateResponse{date.String(), day, int(month), year, date.DayOfYear(), int(date.Weekday()), date.Weekday().String(), date.RomanYear().String(), month.String()}
+}
+
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
+func NewErrorResponse(message string) ErrorResponse {
+	return ErrorResponse{message}
+}
+
+const dateFormat = "2006-01-02"
 
 /*
  * TODO
- * - accept dates, convert to FRC
- * - accept timezone, figure out current day in that timezone
+ * - add godep
  */
 
 func main() {
@@ -34,14 +51,13 @@ func main() {
 	router := mux.NewRouter()
 
 	router.HandleFunc("/today", GetToday).Methods("GET")
-	router.HandleFunc("/date", GetDate)
-	router.HandleFunc("/date/{type}", GetDate)
+	router.HandleFunc("/date", GetDate).Methods("GET")
 
-	log.Fatalln(http.ListenAndServe(":" + *port, router))
+	log.Fatalln(http.ListenAndServe(":"+*port, router))
 }
 
 func GetToday(w http.ResponseWriter, r *http.Request) {
-	response, err := json.Marshal(responseFromDate(fdate.Today()))
+	response, err := json.Marshal(NewDateResponse(fdate.Today()))
 
 	if err != nil {
 		log.Println("error", err)
@@ -51,10 +67,43 @@ func GetToday(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetDate(w http.ResponseWriter, r *http.Request) {
-}
+	date := r.URL.Query().Get("date")
+	tz := r.URL.Query().Get("tz")
 
-func responseFromDate(date fdate.Date) DateResponse {
-	year, month, day := date.Date()
+	if date == "" {
+		message, _ := json.Marshal(NewErrorResponse("No date parameter found"))
+		w.Write(message)
+		return
+	}
 
-	return DateResponse{date.String(), day, int(month), year, date.DayOfYear(), date.Weekday().String(), date.RomanYear().String(), month.String()}
+	if tz == "" {
+		message, _ := json.Marshal(NewErrorResponse("No timezone parameter found"))
+		w.Write(message)
+		return
+	}
+
+	parsedTime, err := time.Parse(dateFormat, date) // does this deal with timezones?
+
+	if err != nil {
+		message, _ := json.Marshal(NewErrorResponse("Time is not yyyy-mm-dd format"))
+		w.Write(message)
+		return;
+	}
+
+	loc, err := time.LoadLocation(tz)
+
+	log.Println(loc.String())
+	log.Println(parsedTime.In(loc))
+
+	if err != nil {
+		message, _ := json.Marshal(NewErrorResponse("Timezone does not exist: " + tz))
+		w.Write(message)
+		return;
+	}
+
+	frcDate := fdate.DateFromTime(parsedTime.In(loc))
+
+	response, _ := json.Marshal(NewDateResponse(frcDate))
+
+	w.Write(response)
 }
